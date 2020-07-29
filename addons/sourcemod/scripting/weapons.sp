@@ -35,10 +35,10 @@
 public Plugin myinfo = 
 {
 	name = "Weapons & Knives",
-	author = "kgns | oyunhost.net",
+	author = "kgns",
 	description = "All in one weapon skin management",
-	version = "1.4.0",
-	url = "https://www.oyunhost.net"
+	version = "1.6.0",
+	url = "http://www.ymos.top/"
 };
 
 public void OnPluginStart()
@@ -60,28 +60,28 @@ public void OnPluginStart()
 	LoadTranslations("weapons.phrases");
 	
 	g_Cvar_DBConnection 			= CreateConVar("sm_weapons_db_connection", 			"storage-local", 	"Database connection name in databases.cfg to use");
-	g_Cvar_TablePrefix 				= CreateConVar("sm_weapons_table_prefix", 			"", 				"Prefix for database table (example: 'xyz_')");
-	g_Cvar_ChatPrefix 				= CreateConVar("sm_weapons_chat_prefix", 			"[oyunhost.net]", 	"Prefix for chat messages");
+	g_Cvar_TablePrefix 			= CreateConVar("sm_weapons_table_prefix", 			"", 				"Prefix for database table (example: 'xyz_')");
+	g_Cvar_ChatPrefix 			= CreateConVar("sm_weapons_chat_prefix", 			"[server]", 	"Prefix for chat messages");
 	g_Cvar_KnifeStatTrakMode 		= CreateConVar("sm_weapons_knife_stattrak_mode", 	"0", 				"0: All knives show the same StatTrak counter (total knife kills) 1: Each type of knife shows its own separate StatTrak counter");
-	g_Cvar_EnableFloat 				= CreateConVar("sm_weapons_enable_float", 			"1", 				"Enable/Disable weapon float options");
+	g_Cvar_EnableFloat 			= CreateConVar("sm_weapons_enable_float", 			"1", 				"Enable/Disable weapon float options");
 	g_Cvar_EnableNameTag 			= CreateConVar("sm_weapons_enable_nametag", 		"1", 				"Enable/Disable name tag options");
 	g_Cvar_EnableStatTrak 			= CreateConVar("sm_weapons_enable_stattrak", 		"1", 				"Enable/Disable StatTrak options");
-	g_Cvar_EnableAllSkins			= CreateConVar("sm_weapons_enable_allskins",		"1",				"Enable/Disable All Skins options");
 	g_Cvar_EnableSeed				= CreateConVar("sm_weapons_enable_seed",			"1",				"Enable/Disable Seed options");
+	g_Cvar_EnablePaints				= CreateConVar("sm_weapons_enable_paints",			"1",				"Enable/Disable Paints options");
 	g_Cvar_FloatIncrementSize 		= CreateConVar("sm_weapons_float_increment_size", 	"0.05", 			"Increase/Decrease by value for weapon float");
 	g_Cvar_EnableWeaponOverwrite 	= CreateConVar("sm_weapons_enable_overwrite", 		"1", 				"Enable/Disable players overwriting other players' weapons (picked up from the ground) by using !ws command");
-	g_Cvar_GracePeriod 				= CreateConVar("sm_weapons_grace_period", 			"0", 				"Grace period in terms of seconds counted after round start for allowing the use of !ws command. 0 means no restrictions");
-	g_Cvar_InactiveDays 			= CreateConVar("sm_weapons_inactive_days", 			"30", 				"Number of days before a player (SteamID) is marked as inactive and his data is deleted. (0 or any negative value to disable deleting)");
+	g_Cvar_GracePeriod 			= CreateConVar("sm_weapons_grace_period", 			"0", 				"Grace period in terms of seconds counted after round start for allowing the use of !ws command. 0 means no restrictions");
+	g_Cvar_InactiveDays 			= CreateConVar("sm_weapons_inactive_days", 			"0", 				"Number of days before a player (SteamID) is marked as inactive and his data is deleted. (0 or any negative value to disable deleting)");
 	
 	AutoExecConfig(true, "weapons");
 	
 	RegConsoleCmd("buyammo1", CommandWeaponSkins);
 	RegConsoleCmd("sm_ws", CommandWeaponSkins);
-	RegConsoleCmd("buyammo2", CommandKnife);
 	RegConsoleCmd("sm_knife", CommandKnife);
 	RegConsoleCmd("sm_nametag", CommandNameTag);
 	RegConsoleCmd("sm_wslang", CommandWSLang);
 	RegConsoleCmd("sm_seed", CommandSeedMenu);
+	RegConsoleCmd("buyammo2", CommandKnife);
 	
 	PTaH(PTaH_GiveNamedItemPre, Hook, GiveNamedItemPre);
 	PTaH(PTaH_GiveNamedItemPost, Hook, GiveNamedItemPost);
@@ -118,30 +118,12 @@ public Action CommandWeaponSkins(int client, int args)
 
 public Action CommandSeedMenu(int client, int args)
 {
-	if (IsValidClient(client) && g_bEnableSeed)
+	if(!g_bEnableSeed)
 	{
-		int curWep = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
-		if (!IsValidEntity(curWep) || !g_iSkins[client][GetWeaponIndex(curWep)])
-		{
-			PrintToChat(client, " %s Please equip a skinned weapon!", g_ChatPrefix);
-			return Plugin_Handled;
-		}
-		g_iIndex[client] = GetWeaponIndex(curWep);
-
-		int menuTime;
-		if((menuTime = GetRemainingGracePeriodSeconds(client)) >= 0)
-		{
-			CreateSeedMenu(client).Display(client, menuTime);
-		}
-		else
-		{
-			PrintToChat(client, " %s \x02%t", g_ChatPrefix, "GracePeriod", g_iGracePeriod);
-		}
+		ReplyToCommand(client, " %s \x02%T", g_ChatPrefix, "SeedDisabled", client);
+		return Plugin_Handled;
 	}
-	else
-	{
-		PrintToChat(client, "Invalid client or seed disabled.");
-	}
+	ReplyToCommand(client, " %s \x04%T", g_ChatPrefix, "SeedExplanation", client);
 	return Plugin_Handled;
 }
 
@@ -152,7 +134,7 @@ public Action CommandKnife(int client, int args)
 		int menuTime;
 		if((menuTime = GetRemainingGracePeriodSeconds(client)) >= 0)
 		{
-			CreateKnifeMenu(client).Display(client, menuTime);
+			menuKnife.Display(client, menuTime);
 		}
 		else
 		{
@@ -193,16 +175,20 @@ public Action CommandNameTag(int client, int args)
 void SetWeaponProps(int client, int entity)
 {
 	int index = GetWeaponIndex(entity);
-	if (index > -1 && g_iSkins[client][index] != 0)
+	//int team = IsWeaponIndexInOnlyOneTeam(g_iIndex[client]) ? CS_TEAM_T : GetClientTeam(client);
+	int team = GetClientTeam(client);
+	if (index > -1 && (g_iSkins[client][index][team] != 0))
 	{
 		static int IDHigh = 16384;
 		SetEntProp(entity, Prop_Send, "m_iItemIDLow", -1);
 		SetEntProp(entity, Prop_Send, "m_iItemIDHigh", IDHigh++);
-		SetEntProp(entity, Prop_Send, "m_nFallbackPaintKit", g_iSkins[client][index] == -1 ? GetRandomSkin(client, index) : g_iSkins[client][index]);
-		SetEntPropFloat(entity, Prop_Send, "m_flFallbackWear", !g_bEnableFloat || g_fFloatValue[client][index] == 0.0 ? 0.000001 : g_fFloatValue[client][index] == 1.0 ? 0.999999 : g_fFloatValue[client][index]);
-		if (g_bEnableSeed && g_iWeaponSeed[client][index] != -1)
+
+		SetEntProp(entity, Prop_Send, "m_nFallbackPaintKit", g_iSkins[client][index][team] == -1 ? GetRandomSkin(client, index) : g_iSkins[client][index][team]);
+
+		SetEntPropFloat(entity, Prop_Send, "m_flFallbackWear", !g_bEnableFloat || g_fFloatValue[client][index][team] == 0.0 ? 0.000001 : g_fFloatValue[client][index][team] == 1.0 ? 0.999999 : g_fFloatValue[client][index][team]);
+		if (g_bEnableSeed && g_iWeaponSeed[client][index][team] != -1)
 		{
-			SetEntProp(entity, Prop_Send, "m_nFallbackSeed", g_iWeaponSeed[client][index]);
+			SetEntProp(entity, Prop_Send, "m_nFallbackSeed", g_iWeaponSeed[client][index][team]);
 		}
 		else
 		{
@@ -214,22 +200,23 @@ void SetWeaponProps(int client, int entity)
 		{
 			if(g_bEnableStatTrak)
 			{
-				SetEntProp(entity, Prop_Send, "m_nFallbackStatTrak", g_iStatTrak[client][index] == 1 ? g_iStatTrakCount[client][index] : -1);
-				SetEntProp(entity, Prop_Send, "m_iEntityQuality", g_iStatTrak[client][index] == 1 ? 9 : 0);
+				SetEntProp(entity, Prop_Send, "m_nFallbackStatTrak", g_iStatTrak[client][index][team] == 1 ? g_iStatTrakCount[client][index][team] : -1);
+				SetEntProp(entity, Prop_Send, "m_iEntityQuality", g_iStatTrak[client][index][team] == 1 ? 9 : 0);
 			}
 		}
 		else
 		{
 			if(g_bEnableStatTrak)
 			{
-				SetEntProp(entity, Prop_Send, "m_nFallbackStatTrak", g_iStatTrak[client][index] == 0 ? -1 : g_iKnifeStatTrakMode == 0 ? GetTotalKnifeStatTrakCount(client) : g_iStatTrakCount[client][index]);
+				SetEntProp(entity, Prop_Send, "m_nFallbackStatTrak", g_iStatTrak[client][index][team] == 0 ? -1 : g_iKnifeStatTrakMode == 0 ? GetTotalKnifeStatTrakCount(client) : g_iStatTrakCount[client][index][team]);
 			}
 			SetEntProp(entity, Prop_Send, "m_iEntityQuality", 3);
 		}
-		if (g_bEnableNameTag && strlen(g_NameTag[client][index]) > 0)
+		if (g_bEnableNameTag && strlen(g_NameTag[client][index][team]) > 0)
 		{
-			SetEntDataString(entity, FindSendPropInfo("CBaseAttributableItem", "m_szCustomName"), g_NameTag[client][index], 128);
+			SetEntDataString(entity, FindSendPropInfo("CBaseAttributableItem", "m_szCustomName"), g_NameTag[client][index][team], 128);
 		}
+		
 		SetEntProp(entity, Prop_Send, "m_iAccountID", g_iSteam32[client]);
 		SetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity", client);
 		SetEntPropEnt(entity, Prop_Send, "m_hPrevOwner", -1);
@@ -246,7 +233,7 @@ void RefreshWeapon(int client, int index, bool defaultKnife = false)
 		if (IsValidWeapon(weapon))
 		{
 			bool isKnife = IsKnife(weapon);
-			if ((!defaultKnife && GetWeaponIndex(weapon) == index) || (isKnife && (defaultKnife || IsKnifeClass(g_WeaponClasses[index]))))
+			if ((!defaultKnife && GetWeaponIndex(weapon) == index) || (isKnife && (defaultKnife || index == -1 || IsKnifeClass(g_WeaponClasses[index]))))
 			{
 				if(!g_bOverwriteEnabled)
 				{
@@ -305,7 +292,7 @@ void RefreshWeapon(int client, int index, bool defaultKnife = false)
 
 public Action ReserveAmmoTimer(Handle timer, DataPack pack)
 {
-	ResetPack(pack);
+	pack.Reset();
 	int clientIndex = GetClientOfUserId(pack.ReadCell());
 	int offset = pack.ReadCell();
 	int ammo = pack.ReadCell();

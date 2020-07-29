@@ -80,9 +80,21 @@
 	{
 		"en"	"★ Your own knife"
 	}
+	"RandomKnife"
+	{
+		"en"	"★ Random knife"
+	}
 	"SetSkin"
 	{
 		"en"	"Choose Skin"
+	}
+	"Paints"
+	{
+		"en"	"Use Other Skin"
+	}
+	"Applyother"
+	{
+		"en"	"Apply Other Team"
 	}
 	"SetFloat"
 	{
@@ -296,6 +308,26 @@
 	{
 		"en"	"★ Talon"
 	}
+	"weapon_knife_css"
+	{
+		"en"	"★ Classic Knife"
+	}
+	"weapon_knife_cord"
+	{
+		"en"	"★ Paracord Knife"
+	}
+	"weapon_knife_canis"
+	{
+		"en"	"★ Survival Knife"
+	}
+	"weapon_knife_outdoor"
+	{
+		"en"	"★ Nomad Knife"
+	}
+	"weapon_knife_skeleton"
+	{
+		"en"	"★ Skeleton Knife"
+	}
 	"weapon_knife_t"
 	{
 		"en"	"Knife"
@@ -336,13 +368,9 @@
 	{
 		"en"	"Name tag successfully applied"
 	}
-	"AllSkins"
+	"Seed"
 	{
-		"en"	"Skin From All"
-	}
-	"AllSkinsSub"
-	{
-		"en"	"Skins for: %s"
+		"en"	"Seed"
 	}
 	"SeedTitle"
 	{
@@ -354,7 +382,7 @@
 	}
 	"SeedRandom"
 	{
-		"en"	"Use Random Seed"
+		"en"	"Random Seed"
 	}
 	"SeedManual"
 	{
@@ -370,7 +398,7 @@
 	}
 	"SeedSuccess"
 	{
-		"en"	"Seed successfully applied"
+		"en"	"Seed successfully applied."
 	}
 	"SeedCancelled"
 	{
@@ -383,5 +411,21 @@
 	"SeedSaved"
 	{
 		"en"	"Seed saved."
+	}
+	"SeedDisabled"
+	{
+		"en"	"Seed menu is disabled at the moment."
+	}
+	"SeedExplanation"
+	{
+		"en"	"You should use !ws menu to set seed for skins."
+	}
+	"SeedReset"
+	{
+		"en"	"Seed reset."
+	}
+	"ResetSeed"
+	{
+		"en"	"Reset Seed"
 	}
 }

@@ -109,7 +109,7 @@ stock int DefIndexByClass(char[] class)
 	return 0;
 }
 
-stock void RemoveWeaponPrefix(char[] source, char[] output, int size)
+stock void RemoveWeaponPrefix(const char[] source, char[] output, int size)
 {
 	strcopy(output, size, source[7]);
 }
@@ -169,12 +169,14 @@ stock void FirstCharUpper(char[] string)
 
 stock int GetTotalKnifeStatTrakCount(int client)
 {
+	//int team = IsWeaponIndexInOnlyOneTeam(g_iIndex[client]) ? CS_TEAM_T : GetClientTeam(client);
+	int team = GetClientTeam(client);
 	int count = 0;
 	for (int i = 0; i < sizeof(g_WeaponClasses); i++)
 	{
 		if (IsKnifeClass(g_WeaponClasses[i]))
 		{
-			count += g_iStatTrakCount[client][i];
+			count += g_iStatTrakCount[client][i][team];
 		}
 	}
 	return count;
@@ -191,4 +193,16 @@ stock int GetRemainingGracePeriodSeconds(int client)
 		int remaining = g_iRoundStartTime + g_iGracePeriod - GetTime();
 		return remaining > 0 ? remaining : -1;
 	}
+}
+
+stock bool IsWeaponIndexInOnlyOneTeam(int index)
+{
+	for (int i = 0; i < sizeof(g_OnlyOneTeamWeaponIndex); i++)
+	{
+		if (g_OnlyOneTeamWeaponIndex[i] == index)
+		{
+			return true;
+		}
+	}
+	return false;
 }

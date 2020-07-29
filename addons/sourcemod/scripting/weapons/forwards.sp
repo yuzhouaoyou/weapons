@@ -29,6 +29,7 @@ public void OnConfigsExecuted()
 	
 	if(db == null)
 	{
+		g_iDatabaseState = 0;
 		Database.Connect(SQLConnectCallback, g_DBConnection);
 	}
 	else
@@ -43,8 +44,8 @@ public void OnConfigsExecuted()
 	g_bEnableFloat = g_Cvar_EnableFloat.BoolValue;
 	g_bEnableNameTag = g_Cvar_EnableNameTag.BoolValue;
 	g_bEnableStatTrak = g_Cvar_EnableStatTrak.BoolValue;
-	g_bEnableAllSkins = g_Cvar_EnableAllSkins.BoolValue;
 	g_bEnableSeed = g_Cvar_EnableSeed.BoolValue;
+	g_bEnablePaints = g_Cvar_EnablePaints.BoolValue;
 	g_fFloatIncrementSize = g_Cvar_FloatIncrementSize.FloatValue;
 	g_iFloatIncrementPercentage = RoundFloat(g_fFloatIncrementSize * 100.0);
 	g_bOverwriteEnabled = g_Cvar_EnableWeaponOverwrite.BoolValue;
@@ -79,18 +80,20 @@ public void OnClientPutInServer(int client)
 
 public void OnClientPostAdminCheck(int client)
 {
-	if(IsValidClient(client))
+	if(g_iDatabaseState > 1 && IsValidClient(client))
 	{
 		char steam32[20];
 		char temp[20];
-		GetClientAuthId(client, AuthId_Steam3, steam32, sizeof(steam32));
-		strcopy(temp, sizeof(temp), steam32[5]);
-		int index;
-		if((index = StrContains(temp, "]")) > -1)
+		if(GetClientAuthId(client, AuthId_Steam3, steam32, sizeof(steam32)))
 		{
-			temp[index] = '\0';
+			strcopy(temp, sizeof(temp), steam32[5]);
+			int index;
+			if((index = StrContains(temp, "]")) > -1)
+			{
+				temp[index] = '\0';
+			}
+			g_iSteam32[client] = StringToInt(temp);
 		}
-		g_iSteam32[client] = StringToInt(temp);
 		GetPlayerData(client);
 		QueryClientConVar(client, "cl_language", ConVarCallBack);
 	}

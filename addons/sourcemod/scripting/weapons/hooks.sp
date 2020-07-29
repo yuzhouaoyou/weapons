@@ -31,10 +31,25 @@ Action GiveNamedItemPre(int client, char classname[64], CEconItemView &item, boo
 {
 	if (IsValidClient(client))
 	{
-		if (g_iKnife[client] != 0 && IsKnifeClass(classname))
+		int team = GetClientTeam(client);
+		
+		if (g_iKnife[client][team] != 0 && IsKnifeClass(classname))
 		{
 			ignoredCEconItemView = true;
-			strcopy(classname, sizeof(classname), g_WeaponClasses[g_iKnife[client]]);
+
+			if (g_iKnife[client][team] == -1)
+			{
+				int max = menuKnife.ItemCount - 1;
+				int random = GetRandomInt(2, max);
+				
+				char output[4];
+				menuKnife.GetItem(random, output, sizeof(output));
+				strcopy(classname, sizeof(classname), g_WeaponClasses[StringToInt(output)]);
+			}
+			else
+			{
+				strcopy(classname, sizeof(classname), g_WeaponClasses[g_iKnife[client][team]]);
+			}
 			return Plugin_Changed;
 		}
 	}
@@ -59,40 +74,42 @@ void GiveNamedItemPost(int client, const char[] classname, const CEconItemView i
 
 public Action ChatListener(int client, const char[] command, int args)
 {
-	char nameTag[128];
-	GetCmdArgString(nameTag, sizeof(nameTag));
-	StripQuotes(nameTag);
-	if (StrEqual(nameTag, "!ws") || StrEqual(nameTag, "!knife") || StrEqual(nameTag, "!wslang") || StrContains(nameTag, "!nametag") == 0)
+	char msg[128];
+	GetCmdArgString(msg, sizeof(msg));
+	StripQuotes(msg);
+	if (StrEqual(msg, "!ws") || StrEqual(msg, "!knife") || StrEqual(msg, "!wslang") || StrContains(msg, "!nametag") == 0 || StrContains(msg, "!seed") == 0)
 	{
 		return Plugin_Handled;
 	}
 	else if (g_bWaitingForNametag[client] && IsValidClient(client) && g_iIndex[client] > -1 && !IsChatTrigger())
 	{
-		CleanNameTag(nameTag, sizeof(nameTag));
+		CleanNameTag(msg, sizeof(msg));
 		
 		g_bWaitingForNametag[client] = false;
 		
-		if (StrEqual(nameTag, "!cancel") || StrEqual(nameTag, "!iptal"))
+		if (StrEqual(msg, "!cancel") || StrEqual(msg, "!iptal"))
 		{
-			PrintToChat(client, " %s\x02 %t", g_ChatPrefix, "NameTagCancelled");
+			PrintToChat(client, " %s \x02%t", g_ChatPrefix, "NameTagCancelled");
 			return Plugin_Handled;
 		}
 		
-		g_NameTag[client][g_iIndex[client]] = nameTag;
+		//int team = IsWeaponIndexInOnlyOneTeam(g_iIndex[client]) ? CS_TEAM_T : GetClientTeam(client);
+		int team = GetClientTeam(client);
+		g_NameTag[client][g_iIndex[client]][team] = msg;
 		
 		RefreshWeapon(client, g_iIndex[client]);
 		
 		char updateFields[1024];
 		char escaped[257];
-		db.Escape(nameTag, escaped, sizeof(escaped));
+		db.Escape(msg, escaped, sizeof(escaped));
 		char weaponName[32];
-		char weaponClass[32];
-		strcopy(weaponClass, sizeof(weaponClass), g_WeaponClasses[g_iIndex[client]]);
-		RemoveWeaponPrefix(weaponClass, weaponName, sizeof(weaponName));
-		Format(updateFields, sizeof(updateFields), "%s_tag = '%s'", weaponName, escaped);
+		RemoveWeaponPrefix(g_WeaponClasses[g_iIndex[client]], weaponName, sizeof(weaponName));
+		char teamName[4];
+		teamName = team == CS_TEAM_T ? "" : "ct_";
+		Format(updateFields, sizeof(updateFields), "%s%s_tag = '%s'", teamName, weaponName, escaped);
 		UpdatePlayerData(client, updateFields);
 		
-		PrintToChat(client, " %s \x04%t: \x01\"%s\"", g_ChatPrefix, "NameTagSuccess", nameTag);
+		PrintToChat(client, " %s \x04%t: \x01\"%s\"", g_ChatPrefix, "NameTagSuccess", msg);
 		
 		/* NAMETAGCOLOR
 		int menuTime;
@@ -101,31 +118,35 @@ public Action ChatListener(int client, const char[] command, int args)
 			CreateColorsMenu(client).Display(client, menuTime);
 		}
 		*/
-	
+		
 		return Plugin_Handled;
 	}
-	else if (g_bWaitingForSeed[client] && IsValidClient(client) && g_iIndex[client] > -1 && !IsChatTrigger()) {
-		
+	else if (g_bWaitingForSeed[client] && IsValidClient(client) && g_iIndex[client] > -1 && !IsChatTrigger())
+	{
 		g_bWaitingForSeed[client] = false;
-
+		
 		int seedInt;
-		if (StrEqual(nameTag, "!cancel") || StrEqual(nameTag, "!iptal") || StrEqual(nameTag, "")) {
-			PrintToChat(client, " %s\x02 %t", g_ChatPrefix, "SeedCancelled");
+		if (StrEqual(msg, "!cancel") || StrEqual(msg, "!iptal") || StrEqual(msg, ""))
+		{
+			PrintToChat(client, " %s \x02%t", g_ChatPrefix, "SeedCancelled");
 			return Plugin_Handled;
 		}
-		else if ((seedInt = StringToInt(nameTag)) == -1 || seedInt < 0 || seedInt > 8192) {
-			PrintToChat(client, " %s\x02 %t", g_ChatPrefix, "SeedFailed");
+		else if ((seedInt = StringToInt(msg)) < 0 || seedInt > 8192)
+		{
+			PrintToChat(client, " %s \x02%t", g_ChatPrefix, "SeedFailed");
 			return Plugin_Handled;
 		}
-
-		g_iWeaponSeed[client][g_iIndex[client]] = seedInt;
+		//int team = IsWeaponIndexInOnlyOneTeam(g_iIndex[client]) ? CS_TEAM_T : GetClientTeam(client);
+		int team = GetClientTeam(client);
+		g_iWeaponSeed[client][g_iIndex[client]][team] = seedInt;
 		g_iSeedRandom[client][g_iIndex[client]] = -1;
-	
+		
 		RefreshWeapon(client, g_iIndex[client]);
+		
 		CreateTimer(0.1, SeedMenuTimer, GetClientUserId(client));
-
+		
 		PrintToChat(client, " %s \x04%t: \x01%i", g_ChatPrefix, "SeedSuccess", seedInt);
-
+		
 		return Plugin_Handled;
 	}
 	
@@ -148,7 +169,9 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
 		
 	int index = GetWeaponIndex(weapon);
 	
-	if (index != -1 && g_iSkins[attacker][index] != 0 && g_iStatTrak[attacker][index] != 1)
+	//int team = IsWeaponIndexInOnlyOneTeam(g_iIndex[attacker]) ? CS_TEAM_T : GetClientTeam(attacker);
+	int team = GetClientTeam(attacker);
+	if (index != -1 && g_iSkins[attacker][index][team] != 0 && g_iStatTrak[attacker][index][team] != 1)
 		return Plugin_Continue;
 		
 	if (GetEntProp(weapon, Prop_Send, "m_nFallbackStatTrak") == -1)
@@ -158,7 +181,7 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
 	if ((previousOwner = GetEntPropEnt(weapon, Prop_Send, "m_hPrevOwner")) != INVALID_ENT_REFERENCE && previousOwner != attacker)
 		return Plugin_Continue;
 	
-	g_iStatTrakCount[attacker][index]++;
+	g_iStatTrakCount[attacker][index][team]++;
 	/*
 	if (IsKnife(weapon))
 	{
@@ -173,7 +196,9 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
 	char updateFields[256];
 	char weaponName[32];
 	RemoveWeaponPrefix(g_WeaponClasses[index], weaponName, sizeof(weaponName));
-	Format(updateFields, sizeof(updateFields), "%s_trak_count = %d", weaponName, g_iStatTrakCount[attacker][index]);
+	char teamName[4];
+	teamName = team == CS_TEAM_T ? "" : "ct_";
+	Format(updateFields, sizeof(updateFields), "%s%s_trak_count = %d", teamName, weaponName, g_iStatTrakCount[attacker][index][team]);
 	UpdatePlayerData(attacker, updateFields);
 	return Plugin_Continue;
 }

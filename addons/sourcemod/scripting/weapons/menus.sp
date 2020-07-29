@@ -29,11 +29,19 @@ public int WeaponsMenuHandler(Menu menu, MenuAction action, int client, int sele
 				menu.GetItem(selection, skinIdStr, sizeof(skinIdStr));
 				int skinId = StringToInt(skinIdStr);
 				
-				g_iSkins[client][index] = skinId;
 				char updateFields[256];
 				char weaponName[32];
 				RemoveWeaponPrefix(g_WeaponClasses[index], weaponName, sizeof(weaponName));
-				Format(updateFields, sizeof(updateFields), "%s = %d", weaponName, skinId);
+				char currentWeaponName[32];
+				strcopy(currentWeaponName, sizeof(currentWeaponName), weaponName);
+
+				int team = GetClientTeam(client);
+				//int team = GetClientTeam(client);
+				char teamName[4];
+				teamName = team == CS_TEAM_T ? "" : "ct_";
+				g_iSkins[client][index][team] = skinId;
+
+				Format(updateFields, sizeof(updateFields), "%s%s = %d", teamName, currentWeaponName, skinId);
 				UpdatePlayerData(client, updateFields);
 				
 				RefreshWeapon(client, index);
@@ -105,6 +113,8 @@ public int WeaponMenuHandler(Menu menu, MenuAction action, int client, int selec
 		{
 			if(IsClientInGame(client))
 			{
+				int team = GetClientTeam(client);
+
 				char buffer[30];
 				menu.GetItem(selection, buffer, sizeof(buffer));
 				if(StrEqual(buffer, "skin"))
@@ -113,14 +123,6 @@ public int WeaponMenuHandler(Menu menu, MenuAction action, int client, int selec
 					if((menuTime = GetRemainingGracePeriodSeconds(client)) >= 0)
 					{
 						menuWeapons[g_iClientLanguage[client]][g_iIndex[client]].Display(client, menuTime);
-					}
-				}
-				else if(StrEqual(buffer, "allskins"))
-				{
-					int menuTime;
-					if((menuTime = GetRemainingGracePeriodSeconds(client)) >= 0)
-					{
-						CreateAllSkinsMenu(client).Display(client, menuTime);
 					}
 				}
 				else if(StrEqual(buffer, "float"))
@@ -133,11 +135,15 @@ public int WeaponMenuHandler(Menu menu, MenuAction action, int client, int selec
 				}
 				else if(StrEqual(buffer, "stattrak"))
 				{
-					g_iStatTrak[client][g_iIndex[client]] = 1 - g_iStatTrak[client][g_iIndex[client]];
 					char updateFields[256];
 					char weaponName[32];
 					RemoveWeaponPrefix(g_WeaponClasses[g_iIndex[client]], weaponName, sizeof(weaponName));
-					Format(updateFields, sizeof(updateFields), "%s_trak = %d", weaponName, g_iStatTrak[client][g_iIndex[client]]);
+
+					g_iStatTrak[client][g_iIndex[client]][team] = 1 - g_iStatTrak[client][g_iIndex[client]][team];
+
+					char teamName[4];
+					teamName = team == CS_TEAM_T ? "" : "ct_";
+					Format(updateFields, sizeof(updateFields), "%s%s_trak = %d", teamName, weaponName, g_iStatTrak[client][g_iIndex[client]][team]);
 					UpdatePlayerData(client, updateFields);
 					
 					RefreshWeapon(client, g_iIndex[client]);
@@ -159,6 +165,54 @@ public int WeaponMenuHandler(Menu menu, MenuAction action, int client, int selec
 					{
 						CreateSeedMenu(client).Display(client, menuTime);
 					}
+				}
+				else if (StrEqual(buffer, "paints"))
+				{
+					int menuTime;
+					if ((menuTime = GetRemainingGracePeriodSeconds(client)) >= 0)
+					{
+						CreateAllWeaponsPaintsMenu(client).Display(client, menuTime);
+					}
+				}
+				else if (StrEqual(buffer, "applyother"))
+				{
+					if (IsWeaponIndexInOnlyOneTeam(g_iIndex[client]))
+					{
+						return;
+					}
+					
+					char weaponName[32];
+					RemoveWeaponPrefix(g_WeaponClasses[g_iIndex[client]], weaponName, sizeof(weaponName));
+
+					int otherTeam = team == CS_TEAM_CT ? CS_TEAM_T : CS_TEAM_CT;
+					
+					g_iSkins[client][g_iIndex[client]][otherTeam] = g_iSkins[client][g_iIndex[client]][team];
+					g_fFloatValue[client][g_iIndex[client]][otherTeam] = g_fFloatValue[client][g_iIndex[client]][team];
+					g_iWeaponSeed[client][g_iIndex[client]][otherTeam] = g_iWeaponSeed[client][g_iIndex[client]][team];
+					g_iStatTrak[client][g_iIndex[client]][otherTeam] = g_iStatTrak[client][g_iIndex[client]][team];
+					g_iStatTrakCount[client][g_iIndex[client]][otherTeam] = g_iStatTrakCount[client][g_iIndex[client]][team];
+					strcopy(g_NameTag[client][g_iIndex[client]][otherTeam], 128, g_NameTag[client][g_iIndex[client]][team]);
+
+					char otherTeamName[4];
+					otherTeamName = team == CS_TEAM_T ? "ct_" : "";
+					char updateFields[512];
+					Format(updateFields, sizeof(updateFields), "%s%s = %d,			\
+																%s%s_float = %.2f,		\
+																%s%s_trak = %d,		\
+																%s%s_trak_count = %d,	\
+																%s%s_tag = '%s',		\
+																%s%s_seed = %d",
+																otherTeamName, weaponName, g_iSkins[client][g_iIndex[client]][otherTeam], 
+																otherTeamName, weaponName, g_fFloatValue[client][g_iIndex[client]][otherTeam], 
+																otherTeamName, weaponName, g_iStatTrak[client][g_iIndex[client]][otherTeam], 
+																otherTeamName, weaponName, g_iStatTrakCount[client][g_iIndex[client]][otherTeam], 
+																otherTeamName, weaponName, g_NameTag[client][g_iIndex[client]][otherTeam], 
+																otherTeamName, weaponName, g_iWeaponSeed[client][g_iIndex[client]][otherTeam]);
+					UpdatePlayerData(client, updateFields);
+					
+					RefreshWeapon(client, g_iIndex[client]);
+					
+					CreateTimer(1.0, StatTrakMenuTimer, GetClientUserId(client));
 				}
 			}
 		}
@@ -198,7 +252,9 @@ Menu CreateFloatMenu(int client)
 	char buffer[60];
 	Menu menu = new Menu(FloatMenuHandler);
 	
-	float fValue = g_fFloatValue[client][g_iIndex[client]];
+	int team = GetClientTeam(client);
+
+	float fValue = g_fFloatValue[client][g_iIndex[client]][team];
 	fValue = fValue * 100.0;
 	int wear = 100 - RoundFloat(fValue);
 	
@@ -223,14 +279,16 @@ public int FloatMenuHandler(Menu menu, MenuAction action, int client, int select
 		{
 			if(IsClientInGame(client))
 			{
+				int team = GetClientTeam(client);
+
 				char buffer[30];
 				menu.GetItem(selection, buffer, sizeof(buffer));
 				if(StrEqual(buffer, "increase"))
 				{
-					g_fFloatValue[client][g_iIndex[client]] = g_fFloatValue[client][g_iIndex[client]] - g_fFloatIncrementSize;
-					if(g_fFloatValue[client][g_iIndex[client]] < 0.0)
+					g_fFloatValue[client][g_iIndex[client]][team] = g_fFloatValue[client][g_iIndex[client]][team] - g_fFloatIncrementSize;
+					if(g_fFloatValue[client][g_iIndex[client]][team] < 0.0)
 					{
-						g_fFloatValue[client][g_iIndex[client]] = 0.0;
+						g_fFloatValue[client][g_iIndex[client]][team] = 0.0;
 					}
 					if(g_FloatTimer[client] != INVALID_HANDLE)
 					{
@@ -249,10 +307,11 @@ public int FloatMenuHandler(Menu menu, MenuAction action, int client, int select
 				}
 				else if(StrEqual(buffer, "decrease"))
 				{
-					g_fFloatValue[client][g_iIndex[client]] = g_fFloatValue[client][g_iIndex[client]] + g_fFloatIncrementSize;
-					if(g_fFloatValue[client][g_iIndex[client]] > 1.0)
+
+					g_fFloatValue[client][g_iIndex[client]][team] = g_fFloatValue[client][g_iIndex[client]][team] + g_fFloatIncrementSize;
+					if(g_fFloatValue[client][g_iIndex[client]][team] > 1.0)
 					{
-						g_fFloatValue[client][g_iIndex[client]] = 1.0;
+						g_fFloatValue[client][g_iIndex[client]][team] = 1.0;
 					}
 					if(g_FloatTimer[client] != INVALID_HANDLE)
 					{
@@ -301,7 +360,11 @@ public Action FloatTimer(Handle timer, DataPack pack)
 		char updateFields[256];
 		char weaponName[32];
 		RemoveWeaponPrefix(g_WeaponClasses[index], weaponName, sizeof(weaponName));
-		Format(updateFields, sizeof(updateFields), "%s_float = %.2f", weaponName, g_fFloatValue[clientIndex][g_iIndex[clientIndex]]);
+		
+		int team = GetClientTeam(clientIndex);
+		char teamName[4];
+		teamName = team == CS_TEAM_T ? "" : "ct_";
+		Format(updateFields, sizeof(updateFields), "%s%s_float = %.2f", teamName, weaponName, g_fFloatValue[clientIndex][g_iIndex[clientIndex]][team]);
 		UpdatePlayerData(clientIndex, updateFields);
 		
 		RefreshWeapon(clientIndex, index);
@@ -312,13 +375,14 @@ public Action FloatTimer(Handle timer, DataPack pack)
 
 Menu CreateSeedMenu(int client)
 {
+	int team = GetClientTeam(client);
+
 	Menu menu = new Menu(SeedMenuHandler);
 
 	char buffer[128];
-
-	if (g_iWeaponSeed[client][g_iIndex[client]] != -1)
+	if (g_iWeaponSeed[client][g_iIndex[client]][team] != -1)
 	{
-		Format(buffer, sizeof(buffer), "%T", "SeedTitle", client, g_iWeaponSeed[client][g_iIndex[client]]);
+		Format(buffer, sizeof(buffer), "%T", "SeedTitle", client, g_iWeaponSeed[client][g_iIndex[client]][team]);
 	}
 	else if (g_iSeedRandom[client][g_iIndex[client]] > 0)
 	{
@@ -339,6 +403,9 @@ Menu CreateSeedMenu(int client)
 	Format(buffer, sizeof(buffer), "%T", "SeedSave", client);
 	menu.AddItem("sseed", buffer, g_iSeedRandom[client][g_iIndex[client]] == 0 ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 
+	Format(buffer, sizeof(buffer), "%T", "ResetSeed", client);
+	menu.AddItem("seedr", buffer, g_iWeaponSeed[client][g_iIndex[client]][team] == -1 ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+
 	menu.ExitBackButton = true;
 	
 	return menu;
@@ -352,42 +419,59 @@ public int SeedMenuHandler(Menu menu, MenuAction action, int client, int selecti
 		{
 			if(IsClientInGame(client))
 			{
+				int team = GetClientTeam(client);
+
 				char buffer[30];
 				menu.GetItem(selection, buffer, sizeof(buffer));
 				if(StrEqual(buffer, "rseed"))
 				{
-					g_iWeaponSeed[client][g_iIndex[client]] = -1;
+					g_iWeaponSeed[client][g_iIndex[client]][team] = -1;
 					RefreshWeapon(client, g_iIndex[client]);
-
-					char updateFields[256];
-					char weaponName[32];
-					RemoveWeaponPrefix(g_WeaponClasses[g_iIndex[client]], weaponName, sizeof(weaponName));
-					Format(updateFields, sizeof(updateFields), "%s_seed = %d", weaponName, g_iWeaponSeed[client][g_iIndex[client]]);
-					UpdatePlayerData(client, updateFields);
+					CreateTimer(0.1, SeedMenuTimer, GetClientUserId(client));
 				}
 				else if (StrEqual(buffer, "cseed"))
-				{					
+				{
 					g_bWaitingForSeed[client] = true;
 					PrintToChat(client, " %s \x04%t", g_ChatPrefix, "SeedInstruction");
 				}
 				else if (StrEqual(buffer, "sseed"))
-				{	
+				{
 					if(g_iSeedRandom[client][g_iIndex[client]] > 0) 
 					{
-						g_iWeaponSeed[client][g_iIndex[client]] = g_iSeedRandom[client][g_iIndex[client]];
+						g_iWeaponSeed[client][g_iIndex[client]][team] = g_iSeedRandom[client][g_iIndex[client]];
 					}
 					g_iSeedRandom[client][g_iIndex[client]] = 0;
 					RefreshWeapon(client, g_iIndex[client]);
 
-					PrintToChat(client, " %s \x04%t", g_ChatPrefix, "SeedSaved");
-
 					char updateFields[256];
 					char weaponName[32];
 					RemoveWeaponPrefix(g_WeaponClasses[g_iIndex[client]], weaponName, sizeof(weaponName));
-					Format(updateFields, sizeof(updateFields), "%s_seed = %d", weaponName, g_iWeaponSeed[client][g_iIndex[client]]);
+					
+					char teamName[4];
+					teamName = team == CS_TEAM_T ? "" : "ct_";
+					Format(updateFields, sizeof(updateFields), "%s%s_seed = %d", teamName, weaponName, g_iWeaponSeed[client][g_iIndex[client]][team]);
 					UpdatePlayerData(client, updateFields);
+					CreateTimer(0.1, SeedMenuTimer, GetClientUserId(client));
+
+					PrintToChat(client, " %s \x04%t", g_ChatPrefix, "SeedSaved");
 				}
-				CreateTimer(0.1, SeedMenuTimer, GetClientUserId(client));
+				else if (StrEqual(buffer, "seedr"))
+				{
+					g_iWeaponSeed[client][g_iIndex[client]][team] = -1;
+					g_iSeedRandom[client][g_iIndex[client]] = 0;
+					
+					char updateFields[256];
+					char weaponName[32];
+					RemoveWeaponPrefix(g_WeaponClasses[g_iIndex[client]], weaponName, sizeof(weaponName));
+
+					char teamName[4];
+					teamName = team == CS_TEAM_T ? "" : "ct_";
+					Format(updateFields, sizeof(updateFields), "%s%s_seed = -1", teamName, weaponName);
+					UpdatePlayerData(client, updateFields);
+					CreateTimer(0.1, SeedMenuTimer, GetClientUserId(client));
+					
+					PrintToChat(client, " %s \x04%t", g_ChatPrefix, "SeedReset");
+				}
 			}
 		}
 		case MenuAction_Cancel:
@@ -426,8 +510,9 @@ Menu CreateNameTagMenu(int client)
 	Menu menu = new Menu(NameTagMenuHandler);
 	
 	char buffer[128];
-	
-	StripHtml(g_NameTag[client][g_iIndex[client]], buffer, sizeof(buffer));
+	//int team = GetClientTeam(client);
+	int team = GetClientTeam(client);
+	StripHtml(g_NameTag[client][g_iIndex[client]][team], buffer, sizeof(buffer));
 	menu.SetTitle("%T: %s", "SetNameTag", client, buffer);
 	
 	Format(buffer, sizeof(buffer), "%T", "ChangeNameTag", client);
@@ -439,7 +524,7 @@ Menu CreateNameTagMenu(int client)
 	*/
 	
 	Format(buffer, sizeof(buffer), "%T", "DeleteNameTag", client);
-	menu.AddItem("delete", buffer, strlen(g_NameTag[client][g_iIndex[client]]) > 0 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
+	menu.AddItem("delete", buffer, strlen(g_NameTag[client][g_iIndex[client]][team]) > 0 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
 	
 	menu.ExitBackButton = true;
 	
@@ -473,14 +558,19 @@ public int NameTagMenuHandler(Menu menu, MenuAction action, int client, int sele
 				*/
 				else if(StrEqual(buffer, "delete"))
 				{
-					g_NameTag[client][g_iIndex[client]] = "";
 					
 					char updateFields[256];
 					char weaponName[32];
 					RemoveWeaponPrefix(g_WeaponClasses[g_iIndex[client]], weaponName, sizeof(weaponName));
-					Format(updateFields, sizeof(updateFields), "%s_tag = ''", weaponName);
+
+					//int team = GetClientTeam(client);
+					int team = GetClientTeam(client);
+					g_NameTag[client][g_iIndex[client]][team] = "";
+					char teamName[4];
+					teamName = team == CS_TEAM_T ? "" : "ct_";
+					Format(updateFields, sizeof(updateFields), "%s%s_tag = ''", teamName, weaponName);
 					UpdatePlayerData(client, updateFields);
-					
+						
 					RefreshWeapon(client, g_iIndex[client]);
 					
 					int menuTime;
@@ -611,16 +701,19 @@ public Action NameTagColorsMenuTimer(Handle timer, int userid)
 	}
 }
 */
-Menu CreateAllSkinsMenu(int client)
-{
-	Menu menu = new Menu(AllSkinsMenuHandler);
-	menu.SetTitle("%T", "AllSkins", client);
 
-	char buffer[60];
+Menu CreateAllWeaponsPaintsMenu(int client)
+{
+	int index = g_iIndex[client];
+	
+	Menu menu = new Menu(AllWeaponsPaintsMenuHandler);
+	menu.SetTitle("%T", g_WeaponClasses[index], client);
+	
+	char name[32];
 	for (int i = 0; i < sizeof(g_WeaponClasses); i++)
 	{
-		Format(buffer, sizeof(buffer), "%T", g_WeaponClasses[i], client);
-		menu.AddItem(g_WeaponClasses[i], buffer);
+		Format(name, sizeof(name), "%T", g_WeaponClasses[i], client);
+		menu.AddItem(g_WeaponClasses[i], name);
 	}
 	
 	menu.ExitBackButton = true;
@@ -628,7 +721,7 @@ Menu CreateAllSkinsMenu(int client)
 	return menu;
 }
 
-public int AllSkinsMenuHandler(Menu menu, MenuAction action, int client, int selection)
+public int AllWeaponsPaintsMenuHandler(Menu menu, MenuAction action, int client, int selection)
 {
 	switch(action)
 	{
@@ -639,20 +732,19 @@ public int AllSkinsMenuHandler(Menu menu, MenuAction action, int client, int sel
 				char class[30];
 				menu.GetItem(selection, class, sizeof(class));
 				
-				int iClass;
-				g_smWeaponIndex.GetValue(class, iClass);
-				g_iSkinIndex[client] = iClass;
-
+				int temp;
+				g_smWeaponIndex.GetValue(class, temp);
 				int menuTime;
 				if((menuTime = GetRemainingGracePeriodSeconds(client)) >= 0)
 				{
-					CreateSkinsMenu(client, iClass).Display(client, menuTime);
+					menuWeapons[g_iClientLanguage[client]][temp].Display(client, menuTime);
 				}
 			}
 		}
 		case MenuAction_Cancel:
 		{
-			if(IsClientInGame(client) && selection == MenuCancel_ExitBack)
+			
+			if (IsClientInGame(client) && selection == MenuCancel_ExitBack)
 			{
 				int menuTime;
 				if((menuTime = GetRemainingGracePeriodSeconds(client)) >= 0)
@@ -664,93 +756,6 @@ public int AllSkinsMenuHandler(Menu menu, MenuAction action, int client, int sel
 		case MenuAction_End:
 		{
 			delete menu;
-		}
-	}
-}
-
-Menu CreateSkinsMenu(int client, int index)
-{
-	Menu menu = new Menu(SkinMenuHandler);
-
-	char buffer[60];
-	Format(buffer, sizeof(buffer), "%T", g_WeaponClasses[index], client);
-	menu.SetTitle("%T", "AllSkinsSub", client, buffer);
-
-	char idTemp[4];
-	char infoTemp[32];
-
-	int max = menuWeapons[g_iClientLanguage[client]][index].ItemCount;
-	for(int i = 2; i <= max; i++)
-	{
-		menuWeapons[g_iClientLanguage[client]][index].GetItem(i, idTemp, sizeof(idTemp), _, infoTemp, sizeof(infoTemp));
-		menu.AddItem(idTemp, infoTemp);
-	}
-
-	menu.ExitBackButton = true;
-	return menu;
-}
-
-public int SkinMenuHandler(Menu menu, MenuAction action, int client, int selection)
-{
-	switch(action)
-	{
-		case MenuAction_Select:
-		{
-			if(IsClientInGame(client))
-			{
-				int index = g_iIndex[client];
-				
-				char skinIdStr[32];
-				menu.GetItem(selection, skinIdStr, sizeof(skinIdStr));
-				int skinId = StringToInt(skinIdStr);
-
-				g_iSkins[client][index] = skinId;
-				char updateFields[256];
-				char weaponName[32];
-				RemoveWeaponPrefix(g_WeaponClasses[index], weaponName, sizeof(weaponName));
-				Format(updateFields, sizeof(updateFields), "%s = %d", weaponName, skinId);
-				UpdatePlayerData(client, updateFields);
-
-				RefreshWeapon(client, index);
-
-				DataPack pack;
-				CreateDataTimer(0.1, SkinsMenuTimer, pack);
-				pack.WriteCell(GetClientUserId(client));
-				pack.WriteCell(index);
-				pack.WriteCell(GetMenuSelectionPosition());
-			}
-		}
-		case MenuAction_Cancel:
-		{
-			if(IsClientInGame(client) && selection == MenuCancel_ExitBack)
-			{
-				int menuTime;
-				if((menuTime = GetRemainingGracePeriodSeconds(client)) >= 0)
-				{
-					CreateAllSkinsMenu(client).Display(client, menuTime);
-				}
-			}
-		}
-		case MenuAction_End:
-		{
-			delete menu;
-		}
-	}
-}
-
-public Action SkinsMenuTimer(Handle timer, DataPack pack)
-{
-	ResetPack(pack);
-	int clientIndex = GetClientOfUserId(pack.ReadCell());
-	int menuSelectionPosition = pack.ReadCell();
-	
-	if(IsValidClient(clientIndex))
-	{
-		int menuTime;
-		if((menuTime = GetRemainingGracePeriodSeconds(clientIndex)) >= 0)
-		{
-			Menu menu = CreateSkinsMenu(clientIndex, g_iSkinIndex[clientIndex]);
-			menu.DisplayAt(clientIndex, menuSelectionPosition, menuTime);
 		}
 	}
 }
@@ -820,36 +825,32 @@ Menu CreateWeaponMenu(int client)
 	
 	Format(buffer, sizeof(buffer), "%T", "SetSkin", client);
 	menu.AddItem("skin", buffer);
-	
-	if (g_bEnableAllSkins)
+
+	//int team = GetClientTeam(client);
+	int team = GetClientTeam(client);
+	bool weaponHasSkin = (g_iSkins[client][index][team] != 0);
+
+	if (g_bEnablePaints)
 	{
-		Format(buffer, sizeof(buffer), "%T", "AllSkins", client);
-		menu.AddItem("allskins", buffer);
+		Format(buffer, sizeof(buffer), "%T", "Paints", client);
+		menu.AddItem("paints", buffer);
 	}
 
-	bool weaponHasSkin = (g_iSkins[client][index] != 0);
-	
+	if (!IsWeaponIndexInOnlyOneTeam(g_iIndex[client]))
+	{
+		Format(buffer, sizeof(buffer), "%T", "Applyother", client);
+		menu.AddItem("applyother", buffer);
+	}
+
 	if (g_bEnableFloat)
 	{
-		float fValue = g_fFloatValue[client][index];
+		float fValue = g_fFloatValue[client][index][team];
 		fValue = fValue * 100.0;
 		int wear = 100 - RoundFloat(fValue);
 		Format(buffer, sizeof(buffer), "%T%d%%", "SetFloat", client, wear);
 		menu.AddItem("float", buffer, weaponHasSkin ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
 	}
-	
-	if (g_bEnableStatTrak)
-	{
-		if (g_iStatTrak[client][index] == 1)
-		{
-			Format(buffer, sizeof(buffer), "%T%T", "StatTrak", client, "On", client);
-		}
-		else
-		{
-			Format(buffer, sizeof(buffer), "%T%T", "StatTrak", client, "Off", client);
-		}
-		menu.AddItem("stattrak", buffer, weaponHasSkin ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	}
+
 	
 	if (g_bEnableNameTag)
 	{
@@ -859,8 +860,21 @@ Menu CreateWeaponMenu(int client)
 	
 	if (g_bEnableSeed)
 	{
-		Format(buffer, sizeof(buffer), "Seed", client);
+		Format(buffer, sizeof(buffer), "%T", "Seed", client);
 		menu.AddItem("seed", buffer, weaponHasSkin ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
+	}
+	
+	if (g_bEnableStatTrak)
+	{
+		if (g_iStatTrak[client][index][team] == 1)
+		{
+			Format(buffer, sizeof(buffer), "%T%T", "StatTrak", client, "On", client);
+		}
+		else
+		{
+			Format(buffer, sizeof(buffer), "%T%T", "StatTrak", client, "Off", client);
+		}
+		menu.AddItem("stattrak", buffer, weaponHasSkin ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
 	}
 
 	menu.ExitBackButton = true;
@@ -903,6 +917,13 @@ public int MainMenuHandler(Menu menu, MenuAction action, int client, int selecti
 				}
 			}
 		}
+		case MenuAction_Cancel:
+		{
+			if(IsClientInGame(client) && selection == MenuCancel_ExitBack)
+			{
+				ClientCommand(client, "sm_diy");
+			}
+		}
 		case MenuAction_End:
 		{
 			delete menu;
@@ -934,8 +955,9 @@ Menu CreateMainMenu(int client)
 			int weaponEntity = GetEntPropEnt(client, Prop_Send, "m_hMyWeapons", i);
 			if(weaponEntity != -1 && GetWeaponClass(weaponEntity, weaponClass, sizeof(weaponClass)))
 			{
+				int team = GetClientTeam(client);
 				Format(weaponName, sizeof(weaponName), "%T", weaponClass, client);
-				menu.AddItem(weaponClass, weaponName, (IsKnifeClass(weaponClass) && g_iKnife[client] == 0) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+				menu.AddItem(weaponClass, weaponName, (IsKnifeClass(weaponClass) && g_iKnife[client][team] == 0) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 				index++;
 			}
 		}
@@ -948,46 +970,12 @@ Menu CreateMainMenu(int client)
 	
 	Format(buffer, sizeof(buffer), "%T", "ChangeLang", client);
 	menu.AddItem("lang", buffer);
-	
-	return menu;
-}
 
-Menu CreateKnifeMenu(int client)
-{
-	Menu menu = new Menu(KnifeMenuHandler);
-	menu.SetTitle("%T", "KnifeMenuTitle", client);
+	if(LibraryExists("diy"))
+	{
+		menu.ExitBackButton = true;
+	}
 	
-	char buffer[60];
-	Format(buffer, sizeof(buffer), "%T", "OwnKnife", client);
-	menu.AddItem("0", buffer, g_iKnife[client] != 0 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_ursus", client);
-	menu.AddItem("43", buffer, g_iKnife[client] != 43 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_gypsy_jackknife", client);
-	menu.AddItem("44", buffer, g_iKnife[client] != 44 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_stiletto", client);
-	menu.AddItem("45", buffer, g_iKnife[client] != 45 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_widowmaker", client);
-	menu.AddItem("46", buffer, g_iKnife[client] != 46 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_karambit", client);
-	menu.AddItem("33", buffer, g_iKnife[client] != 33 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_m9_bayonet", client);
-	menu.AddItem("34", buffer, g_iKnife[client] != 34 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_bayonet", client);
-	menu.AddItem("35", buffer, g_iKnife[client] != 35 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_survival_bowie", client);
-	menu.AddItem("36", buffer, g_iKnife[client] != 36 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_butterfly", client);
-	menu.AddItem("37", buffer, g_iKnife[client] != 37 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_flip", client);
-	menu.AddItem("38", buffer, g_iKnife[client] != 38 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_push", client);
-	menu.AddItem("39", buffer, g_iKnife[client] != 39 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_tactical", client);
-	menu.AddItem("40", buffer, g_iKnife[client] != 40 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_falchion", client);
-	menu.AddItem("41", buffer, g_iKnife[client] != 41 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
-	Format(buffer, sizeof(buffer), "%T", "weapon_knife_gut", client);
-	menu.AddItem("42", buffer, g_iKnife[client] != 42 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
 	return menu;
 }
 
@@ -1003,9 +991,13 @@ public int KnifeMenuHandler(Menu menu, MenuAction action, int client, int select
 				menu.GetItem(selection, knifeIdStr, sizeof(knifeIdStr));
 				int knifeId = StringToInt(knifeIdStr);
 				
-				g_iKnife[client] = knifeId;
+				int team = GetClientTeam(client);
+
+				g_iKnife[client][team] = knifeId;
+				char teamName[4];
+				teamName = team == CS_TEAM_T ? "" : "ct_";
 				char updateFields[50];
-				Format(updateFields, sizeof(updateFields), "knife = %d", knifeId);
+				Format(updateFields, sizeof(updateFields), "%sknife = %d", teamName, knifeId);
 				UpdatePlayerData(client, updateFields);
 				
 				RefreshWeapon(client, knifeId, knifeId == 0);
@@ -1013,15 +1005,30 @@ public int KnifeMenuHandler(Menu menu, MenuAction action, int client, int select
 				int menuTime;
 				if((menuTime = GetRemainingGracePeriodSeconds(client)) >= 0)
 				{
-					CreateKnifeMenu(client).DisplayAt(client, GetMenuSelectionPosition(), menuTime);
+					menuKnife.DisplayAt(client, GetMenuSelectionPosition(), menuTime);
 				}
 			}
 		}
-		case MenuAction_End:
+		case MenuAction_DrawItem:
 		{
-			delete menu;
+			char info[32];
+			menu.GetItem(selection, info, sizeof(info));
+			int team = GetClientTeam(client);
+			if (g_iKnife[client][team] == StringToInt(info))
+			{
+				return ITEMDRAW_DISABLED;
+			}
+		}
+		case MenuAction_Cancel:
+		{
+			if(IsClientInGame(client) && selection == MenuCancel_ExitBack)
+			{
+				ClientCommand(client, "sm_diy");
+			}
 		}
 	}
+
+	return 0;
 }
 
 Menu CreateLanguageMenu(int client)

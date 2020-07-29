@@ -113,19 +113,6 @@ int g_iKnife[MAXPLAYERS+1][4];
 int g_iRoundStartTime = 0;
 
 int g_iDatabaseState = 0;
-int g_iMigrationStep = 0;
-char g_MigrationWeapons[][] = {
-	"knife_ursus",
-	"knife_gypsy_jackknife",
-	"knife_stiletto",
-	"knife_widowmaker",
-	"mp5sd",
-	"knife_css",
-	"knife_cord",
-	"knife_canis",
-	"knife_outdoor",
-	"knife_skeleton"
-};
 
 char g_Language[MAX_LANG][32];
 int g_iClientLanguage[MAXPLAYERS+1];
